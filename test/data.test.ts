@@ -115,3 +115,8 @@ test("renderChart draws from a CSV without pasting the numbers", () => {
 	const png = out.png as Uint8Array;
 	assert.deepEqual([...png.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
 });
+
+test("readCsv rejects malformed quoted fields rather than silently changing data", () => {
+	assert.throws(() => readCsv({ $csv: "bad.csv" }, { readFile: () => 'a,b\n"unfinished,2\n' }), /unterminated quoted field/);
+	assert.throws(() => readCsv({ $csv: "bad.csv" }, { readFile: () => 'a,b\n"closed"oops,2\n' }), /unexpected character after closing quote/);
+});

@@ -62,7 +62,12 @@ function parseDelimited(text: string, delimiter: string): string[][] {
 			else if (text[i + 1] === '"') {
 				field += '"';
 				i++;
-			} else quoted = false;
+			} else {
+				quoted = false;
+				if (text[i + 1] !== undefined && text[i + 1] !== delimiter && text[i + 1] !== "\r" && text[i + 1] !== "\n") {
+					throw new MplSpecError("invalid CSV: unexpected character after closing quote");
+				}
+			}
 			continue;
 		}
 		if (ch === '"' && field === "") {
@@ -79,6 +84,7 @@ function parseDelimited(text: string, delimiter: string): string[][] {
 			started = true;
 		}
 	}
+	if (quoted) throw new MplSpecError("invalid CSV: unterminated quoted field");
 	endRow();
 	return rows;
 }
