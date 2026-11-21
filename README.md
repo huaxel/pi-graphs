@@ -156,12 +156,21 @@ background as a theme token, so transparency is the only way to match it. Pass `
 - `mpl` is pinned to a git commit because this extension depends on internals (`toScene`, rc key
   names, `Figure`/`Axes` prototypes).
 
+## Configuration
+
+`PI_CHART_DIR` overrides where charts go (default `~/.pi/agent/work/charts`); `/charts` follows it. The
+tests use it to keep runs off your real chart folder.
+
 ## Development
 
 ```sh
 npm install
 npm run check     # tsc --noEmit, then node --test
 ```
+
+`test/load.test.ts` loads `index.ts` through Pi's own extension loader in a throwaway agent directory,
+then drives the registered tool and command, so registration and wiring bugs fail the suite instead of
+showing up in a session.
 
 Layout:
 

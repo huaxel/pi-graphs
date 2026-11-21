@@ -3,7 +3,7 @@ import { existsSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
-export const CHART_ROOT = join(homedir(), ".pi", "agent", "work", "charts");
+export const CHART_ROOT = process.env.PI_CHART_DIR || join(homedir(), ".pi", "agent", "work", "charts");
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const FILES = [".png", ".svg", ".html", ".json"] as const;
 

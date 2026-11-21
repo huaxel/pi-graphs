@@ -83,9 +83,10 @@ export interface MplRenderOutput {
 	readonly theme: string;
 }
 
-/** Default output directory: ~/.pi/agent/work/charts/<YYYY-MM-DD>. */
+/** Default output directory: $PI_CHART_DIR, else ~/.pi/agent/work/charts/<YYYY-MM-DD>. */
 export function defaultChartDir(now = new Date()): string {
-	return join(homedir(), ".pi", "agent", "work", "charts", now.toISOString().slice(0, 10));
+	const base = process.env.PI_CHART_DIR || join(homedir(), ".pi", "agent", "work", "charts");
+	return join(base, now.toISOString().slice(0, 10));
 }
 
 function slugOf(name: string | undefined): string {
