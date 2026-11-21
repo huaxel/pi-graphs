@@ -47,6 +47,13 @@ test("labels that would overlap the plot are pushed back outside it", () => {
 	}
 });
 
+test("the same budget as the PNG path applies before any drawing", () => {
+	assert.throws(
+		() => renderAnsiChart({ calls: [["plot", [Array.from({ length: 500 }, (_, i) => i), Array.from({ length: 400_001 }, (_, i) => i)]]] as never, cols: 60 }),
+		/data points exceeds/,
+	);
+});
+
 test("colour can be turned off and width is honoured", () => {
 	const plain = renderAnsiChart({ rc, cols: 50, color: false, calls: [["plot", [[1, 2, 3], [3, 1, 2]]]] as never });
 	assert.ok(!plain.lines.join("").includes("\x1b["));

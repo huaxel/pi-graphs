@@ -129,6 +129,8 @@ interface CsvRef extends Json {
 const isCsvRef = (v: unknown): v is CsvRef => isObject(v) && typeof v.$csv === "string";
 const isJsonRef = (v: unknown): v is Json & { $json: string } => isObject(v) && typeof v.$json === "string";
 
+const tableCache = new Map<string, CsvTable>();
+
 export interface CsvTable {
 	readonly names: readonly string[];
 	readonly columns: readonly unknown[];
@@ -136,6 +138,9 @@ export interface CsvTable {
 
 /** Parses a CSV once: header names (empty when header: false) and coerced column arrays. */
 export function readCsv(ref: CsvRef, options: DataRefOptions = {}): CsvTable {
+	const cacheKey = `${resolvePath(ref.$csv, options)}|${ref.header ?? true}|${ref.parse ?? "auto"}`;
+	const cached = tableCache.get(cacheKey);
+	if (cached) return cached;
 	const text = readDataFile(ref.$csv, options).replace(/^\uFEFF/, "");
 	const newline = text.search(/\r?\n/);
 	const rows = parseDelimited(text, detectDelimiter(newline === -1 ? text : text.slice(0, newline)));
@@ -143,12 +148,15 @@ export function readCsv(ref: CsvRef, options: DataRefOptions = {}): CsvTable {
 	const header = ref.header ?? true;
 	const names = header ? (rows[0] as string[]).map((n) => n.trim()) : [];
 	const body = header ? rows.slice(1) : rows;
-	const width = Math.max(...rows.map((r) => r.length));
+	let width = 0;
+	for (const row of rows) if (row.length > width) width = row.length;
 	const columns: unknown[] = Array.from({ length: width }, (_, c) => {
 		const raw = body.map((r) => r[c] ?? "");
 		return coerce(raw, ref.parse && ref.parse !== "auto" ? ref.parse : inferKind(raw));
 	});
-	return { names, columns };
+	const table = { names, columns };
+	tableCache.set(cacheKey, table);
+	return table;
 }
 
 function columnOf(ref: CsvRef, table: CsvTable, spec: string | number, role: string): unknown {

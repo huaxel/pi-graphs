@@ -137,6 +137,28 @@ function unknownMethod(fn: string): MplSpecError {	return new MplSpecError(
 	);
 }
 
+/** Ceilings that keep one call from blocking the session. */
+export const MPL_LIMITS = { calls: 250, points: 400_000 } as const;
+
+function countPoints(calls: readonly unknown[]): number {
+	let total = 0;
+	const walk = (value: unknown): void => {
+		if (Array.isArray(value)) {
+			total += value.length;
+			for (const item of value) if (Array.isArray(item)) walk(item);
+		} else if (value instanceof Float64Array || value instanceof Uint32Array) total += value.length;
+	};
+	for (const call of calls) if (Array.isArray(call)) walk(call[1]);
+	return total;
+}
+
+/** Rejects specs past the call or point budget, before any rendering work. */
+export function assertWithinBudget(calls: readonly unknown[]): void {
+	if (calls.length > MPL_LIMITS.calls) throw new Error(`${calls.length} calls exceeds the ${MPL_LIMITS.calls}-call limit`);
+	const points = countPoints(calls);
+	if (points > MPL_LIMITS.points) throw new Error(`${points} data points exceeds the ${MPL_LIMITS.points}-point limit`);
+}
+
 /** Builds the Figure for a spec. Throws MplSpecError for spec mistakes and mpl's own errors for bad kwargs. */
 export function buildFigure(spec: MplFigureSpec): Figure {
 	const base = { style: spec.style, rc: spec.rc ?? {} };

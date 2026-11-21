@@ -6,7 +6,7 @@
  * Trade-off, deliberately accepted: an 80x24 chart is a 160x96 dot canvas against 1440x840 pixels for
  * the PNG, so this is a fallback, not a replacement.
  */
-import { buildFigure, type MplCall, type MplGrid } from "./replay.ts";
+import { assertWithinBudget, buildFigure, type MplCall, type MplGrid } from "./replay.ts";
 
 export interface AnsiRenderInput {
 	readonly calls: readonly MplCall[];
@@ -49,7 +49,7 @@ interface Paint {
 /** Draws a scene into a character grid. Exported for tests; most callers want renderAnsiChart. */
 export function sceneToCells(
 	scene: { width: number; height: number; nodes: readonly unknown[] },
-	options: { cols: number; roleOf: (hex: string) => string | undefined },
+	options: { cols: number },
 ): { cells: Cell[][]; cols: number; rows: number; rowPx: number; colPx: number } {
 	const cols = options.cols;
 	const rows = Math.max(8, Math.round((cols * scene.height) / scene.width / 2));
@@ -184,10 +184,12 @@ export function sceneToCells(
 			}
 			if (node.kind === "image") continue; // rasters stay for the PNG
 			// Path inks nest the colour as ink.stroke.color.hex; fills use ink.fill.hex.
-			const ink = node.ink as { stroke?: { color?: Rgb }; fill?: Rgb } | undefined;
+			const ink = node.ink as { stroke?: { color?: Rgb; width?: number }; fill?: Rgb } | undefined;
 			const paint = (node.stroke as Rgb | undefined)?.hex ?? ink?.stroke?.color?.hex ?? ink?.fill?.hex ?? "#ffffff";
 			const hex = paint.slice(0, 7).toLowerCase();
-			const role = options.roleOf(hex);
+			// Hairlines are rules (grid, spines, ticks) whatever the theme; series strokes are heavier.
+			const strokeWidth = (node.stroke as { width?: number } | undefined)?.width ?? ink?.stroke?.width ?? 0;
+			const thin = strokeWidth > 0 && strokeWidth < 1.5;
 			if (node.kind === "text") {
 				texts.push({
 					text: String(node.text ?? ""),
@@ -207,7 +209,7 @@ export function sceneToCells(
 					continue;
 				}
 				const fillHex = ((node.ink as { fill?: Rgb } | undefined)?.fill?.hex ?? "").slice(0, 7).toLowerCase();
-				if (!fillHex || options.roleOf(fillHex)) continue;
+				if (!fillHex) continue;
 				const row0 = Math.round(r.y / rowPx);
 				const row1 = Math.round((r.y + r.h) / rowPx);
 				const col0 = Math.round(r.x / colPx);
@@ -247,7 +249,7 @@ export function sceneToCells(
 					const [x1, y1] = points[i + 1] as [number, number];
 					const horizontal = Math.abs(y1 - y0) < 0.75;
 					const vertical = Math.abs(x1 - x0) < 0.75;
-					if (role === "grid" && (horizontal || vertical)) {
+					if (thin && (horizontal || vertical)) {
 						// A rule on the box edge is a spine; a short one is a tick mark.
 						if (Math.hypot(x1 - x0, y1 - y0) < 6) continue;
 						const onSpine = horizontal
@@ -280,22 +282,6 @@ export function sceneToCells(
 						}
 						continue;
 					}
-					if (role === "edge" && (horizontal || vertical)) {
-						if (Math.hypot(x1 - x0, y1 - y0) < 6) continue; // tick marks: labels carry the meaning
-						if (horizontal) {
-							const row = Math.round(y0 / rowPx - 0.5);
-							for (let col = Math.round(Math.min(x0, x1) / colPx); col <= Math.round(Math.max(x0, x1) / colPx); col++) {
-								setCell(row, col, { glyph: "─", hex, prio: 1 });
-							}
-						} else {
-							const col = Math.round(x0 / colPx - 0.5);
-							for (let row = Math.round(Math.min(y0, y1) / rowPx); row <= Math.round(Math.max(y0, y1) / rowPx); row++) {
-								setCell(row, col, { glyph: "│", hex, prio: 1 });
-							}
-						}
-						continue;
-					}
-					if (role === "tick") continue;
 					line(x0, y0, x1, y1, color);
 				}
 			}
@@ -331,7 +317,10 @@ export function sceneToCells(
 		const vertical = text.rotation === "vertical";
 		const width = vertical ? 1 : glyphs.length;
 		let col = vertical ? Math.round(text.x / colPx - 0.5) : Math.round(text.x / colPx);
-		const row = Math.round((text.y - text.sizePx * 0.45) / rowPx);
+		let row = Math.round((text.y - text.sizePx * 0.45) / rowPx);
+		// A title sits above the frame: never let it land on the top spine row.
+		if (!vertical && text.y <= box.y0 + 1) row = Math.min(row, Math.round(box.y0 / rowPx - 0.5) - 1);
+		if (row < 0) row = 0;
 		// Labels anchored at their right edge would otherwise run into the plot; keep them outside the box.
 		const startCol = Math.round(box.x0 / colPx);
 		if (!vertical && col < startCol && col + width > startCol) col = startCol - width;
@@ -349,27 +338,10 @@ const style = (want: Paint): string => `${want.bg ? bg(want.bg) : ""}${want.fg ?
 /** Renders a chart spec for a terminal grid. */
 export function renderAnsiChart(input: AnsiRenderInput): AnsiRenderOutput {
 	const cols = Math.max(40, Math.min(200, input.cols ?? 78));
+	assertWithinBudget(input.calls);
 	const fig = buildFigure({ style: input.style, rc: input.rc, grid: input.grid, calls: input.calls });
 	const scene = fig.toScene() as unknown as { width: number; height: number; nodes: readonly unknown[] };
-
-	const rc = input.rc ?? {};
-	const roles = new Map<string, string>();
-	const colorOf = (key: string): string | undefined => {
-		const value = rc[key];
-		if (typeof value !== "string") return undefined;
-		const hex = value.startsWith("#") ? value.slice(0, 7) : undefined;
-		return hex?.toLowerCase();
-	};
-	for (const [key, role] of [
-		["grid.color", "grid"],
-		["axes.edgecolor", "edge"],
-		["xtick.color", "tick"],
-		["ytick.color", "tick"],
-	] as const) {
-		const hex = colorOf(key);
-		if (hex && !roles.has(hex)) roles.set(hex, role);
-	}
-	const { cells, rows } = sceneToCells(scene, { cols, roleOf: (hex) => roles.get(hex) });
+	const { cells, rows } = sceneToCells(scene, { cols });
 
 	const lines: string[] = [];
 	const plain: string[] = [];

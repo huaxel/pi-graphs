@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Type, type TSchema } from "typebox";
-import { MPL_DEFAULT_THEME, MPL_THEMES, renderChart, resolveThemeStyle, type MplRenderInput } from "./render.ts";
+import { MPL_DEFAULT_THEME, MPL_PALETTES, MPL_THEMES, renderChart, resolveThemeStyle, type MplRenderInput } from "./render.ts";
 import { renderAnsiChart } from "./ansi.ts";
 import { CHART_ROOT, describeChart, listCharts, pruneCharts } from "./gallery.ts";
 import { expandDataRefs } from "./data.ts";
@@ -179,7 +179,11 @@ export function toMplRenderToolDefinition(outDir?: () => string): ToolDefinition
 				const input = withSavedSpec(params as MplRenderParams);
 				if (input.format === "ansi") {
 					const colors = ctx?.ui?.theme?.colors;
-					const rc = input.theme === undefined ? piThemeRc(colors) : (input.rc ?? {});
+					const paletteCycle = input.palette && input.palette !== "theme" ? MPL_PALETTES[input.palette] : undefined;
+					const rc = {
+						...(paletteCycle && { "axes.prop_cycle": paletteCycle }),
+						...(input.theme === undefined ? piThemeRc(colors) : (input.rc ?? {})),
+					};
 					const spec = expandDataRefs({ ...input, rc });
 					const chart = renderAnsiChart({ calls: spec.calls, rc: spec.rc ?? {}, grid: spec.grid, style: resolveThemeStyle(input.theme ?? MPL_DEFAULT_THEME) as string, cols: input.cols });
 					return {

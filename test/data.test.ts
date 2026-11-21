@@ -39,6 +39,15 @@ test("readCsv infers numbers and dates, keeps quoted delimiters, and leaves gaps
 	assert.deepEqual(table.columns[3], ["a, quoted", "plain", 'quote "inside"']);
 });
 
+test("readCsv handles files with more rows than a spread can carry, and caches the parse", () => {
+	const rows = ["n,v", ...Array.from({ length: 70_000 }, (_, i) => `${i},${i * 2}`)].join("\n");
+	const big = write("big.csv", rows);
+	const table = readCsv({ $csv: big });
+	assert.equal((table.columns[0] as unknown[]).length, 70_000);
+	assert.deepEqual((table.columns[1] as number[]).slice(-2), [139_996, 139_998]);
+	assert.equal(readCsv({ $csv: big }), table, "the parsed table is reused");
+});
+
 test("readCsv detects semicolon files and reads headerless data", () => {
 	const table = readCsv({ $csv: semi });
 	assert.deepEqual(table.names, ["bucket", "count"]);

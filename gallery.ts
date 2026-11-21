@@ -1,5 +1,5 @@
 /** The chart folder: listing rendered charts and pruning old day directories. No Pi imports, so tests drive it. */
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
@@ -75,12 +75,22 @@ export function pruneCharts(root = CHART_ROOT, options: { days?: number; keepDay
 	if (!existsSync(root)) return { days: [], files: 0 };
 	const cutoff = daysAgo(options.days ?? 14);
 	const keep = options.keepDay ?? dayString(new Date());
-	const rootPath = resolve(root);
+	let rootPath = resolve(root);
+	try {
+		rootPath = realpathSync(rootPath);
+	} catch {
+		// keep the resolved path when the root is not readable
+	}
 	const removed: string[] = [];
 	let files = 0;
 	for (const day of readdirSync(root)) {
 		if (!DAY.test(day) || day >= cutoff || day === keep) continue;
-		const dir = resolve(join(root, day));
+		let dir = resolve(join(root, day));
+		try {
+			dir = realpathSync(dir);
+		} catch {
+			continue;
+		}
 		if (!dir.startsWith(`${rootPath}/`)) continue;
 		try {
 			files += readdirSync(dir).length;

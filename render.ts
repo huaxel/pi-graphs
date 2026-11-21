@@ -9,7 +9,7 @@ import { sidecar } from "mpl/annotate";
 import { allColormaps } from "mpl/colormaps/all";
 import { allColormapRgba } from "mpl/colormaps/all.rgba";
 import { allFonts } from "mpl/fonts/all";
-import { buildFigure, type MplCall, type MplGrid } from "./replay.ts";
+import { assertWithinBudget, buildFigure, type MplCall, type MplGrid } from "./replay.ts";
 import { expandDataRefs, type DataRefOptions } from "./data.ts";
 
 registerFonts(...allFonts);
@@ -69,8 +69,7 @@ export const MPL_PALETTES: Readonly<Record<Exclude<MplPalette, "theme">, readonl
 	tableau: ["#4E79A7", "#F28E2B", "#59A14F", "#E15759", "#76B7B2", "#EDC948", "#B07AA1", "#FF9DA7"],
 };
 
-/** Ceilings that keep one call from blocking the session. */
-export const MPL_LIMITS = { calls: 250, points: 400_000 } as const;
+export { MPL_LIMITS, assertWithinBudget } from "./replay.ts";
 
 export interface MplRenderOutput {
 	readonly png?: Uint8Array;
@@ -97,24 +96,6 @@ function slugOf(name: string | undefined): string {
 function specDigest(spec: MplRenderInput, theme: string, scale: number, format: string): string {
 	const canonical = JSON.stringify({ calls: spec.calls, theme, scale, format, rc: spec.rc ?? {}, grid: spec.grid ?? null, tight: spec.tight_layout ?? null, palette: spec.palette ?? null, interactive: spec.interactive ?? null });
 	return createHash("sha256").update(canonical).digest("hex").slice(0, 10);
-}
-
-function countPoints(calls: readonly unknown[]): number {
-	let total = 0;
-	const walk = (value: unknown): void => {
-		if (Array.isArray(value)) {
-			total += value.length;
-			for (const item of value) if (Array.isArray(item)) walk(item);
-		} else if (value instanceof Float64Array || value instanceof Uint32Array) total += value.length;
-	};
-	for (const call of calls) if (Array.isArray(call)) walk(call[1]);
-	return total;
-}
-
-function assertWithinBudget(calls: readonly unknown[]): void {
-	if (calls.length > MPL_LIMITS.calls) throw new Error(`${calls.length} calls exceeds the ${MPL_LIMITS.calls}-call limit`);
-	const points = countPoints(calls);
-	if (points > MPL_LIMITS.points) throw new Error(`${points} data points exceeds the ${MPL_LIMITS.points}-point limit`);
 }
 
 /** PNG width and height from the IHDR chunk. */
