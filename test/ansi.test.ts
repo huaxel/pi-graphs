@@ -73,3 +73,43 @@ test("colour can be turned off and width is honoured", () => {
 	assert.ok(!plain.lines.join("").includes("\x1b["));
 	assert.equal(plain.cols, 50);
 });
+
+test("the x axis label gets a row below the tick labels", () => {
+	const chart = lines([["plot", [[1, 2, 3], [3, 1, 2]]], ["set_xlabel", ["quarter"]]]);
+	const label = chart.plain.findIndex((row) => row.includes("quarter"));
+	assert.ok(label > 0, "the label is drawn");
+	assert.doesNotMatch(chart.plain[label] as string, /\d/, "no tick label shares its row");
+	const tickRow = chart.plain.reduce((found, row, index) => (row.includes("1.00") && row.includes("3.00") ? index : found), -1);
+	assert.ok(tickRow >= 0 && tickRow < label, "ticks sit above the label");
+});
+
+test("a rotated y label reads bottom to top, one column, clear of the ticks", () => {
+	const chart = lines([["plot", [[1, 2, 3], [3, 1, 2]]], ["set_ylabel", ["revenue"]]]);
+	const rows = chart.plain.map((row) => [...row]);
+	const columnOf = (text: string): number | undefined => {
+		for (let col = 0; col < chart.cols; col++) {
+			const column = rows.map((cells) => cells[col] ?? " ").reverse().join("");
+			if (column.includes(text)) return col;
+		}
+		return undefined;
+	};
+	const col = columnOf("revenue");
+	assert.notEqual(col, undefined, "the label is drawn bottom to top");
+	const letterRows = rows.map((cells, row) => ({ row, cell: cells[col as number] })).filter(({ cell }) => cell?.trim());
+	assert.equal(letterRows.length, "revenue".length, "one row per letter");
+	for (const { row } of letterRows) {
+		const next = rows[row]?.[(col as number) + 1];
+		assert.ok(next === " " || col === 0, "a blank column separates the label from the ticks");
+	}
+});
+
+test("grid panels stay transparent instead of painting the Axes facecolour", () => {
+	const chart = renderAnsiChart({
+		rc,
+		cols: 70,
+		grid: { rows: 1, cols: 2 },
+		calls: [["plot", [[1, 2, 3], [3, 1, 2]]]] as never,
+	});
+	assert.ok(!chart.plain.join("").includes("█"), "no background fill across the panels");
+	assert.match(chart.plain.join("\n"), /[⠀-⣿]/, "the series still draws");
+});
