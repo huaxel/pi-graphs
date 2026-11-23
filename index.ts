@@ -36,9 +36,10 @@ Dates:
 - annotate takes epoch days (ms / 86400000) as coordinates.
 
 Data files (prefer these over pasting long arrays):
-- {"$csv": "path", "x": "date", "y": ["revenue", "cost"]} is one positional argument that expands to [x, y1, y2]; columns are read by header name (or index).
+- {"$csv": "path", "x": "date", "y": "revenue"} expands to positional [x, y]. y is one column name or index. One series per call. A second series is a second plot call with its own y. y as a list of columns is rejected.
 - {"$csv": "path", "column": "revenue"} is that column alone, for hist or a kwarg such as { yerr: {"$csv": ..., "column": "err"} }.
-- Without x or y the first column is x and the rest are series. {"header": false} reads headerless files; {"parse": "number" | "date" | "string"} forces a column type; the default infers per column (numbers, ISO dates, else strings), and empty cells become NaN gaps.
+- Without x or y, a one-column file is that column, and a wider file is column 0 against column 1. Further columns are not plotted; name them with x and y.
+- {"header": false} reads headerless files; {"parse": "number" | "date" | "string"} forces a column type; the default infers per column (numbers, ISO dates, else strings), and empty cells become NaN gaps.
 - {"$json": "path"} is any JSON value from that file. Delimiters , ; tab and | are detected; quoted fields may contain them.
 - Relative paths resolve against the working directory, ~ expands to home, and files over 32 MB are refused.
 
