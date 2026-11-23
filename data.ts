@@ -206,6 +206,9 @@ export function readCsv(ref: CsvRef, options: DataRefOptions = {}): CsvTable {
 }
 
 function columnOf(ref: CsvRef, table: CsvTable, spec: string | number, role: string): unknown {
+	if (typeof spec === "number" && !Number.isInteger(spec)) {
+		throw new MplSpecError(`${role} ${JSON.stringify(spec)} is not a whole column index`);
+	}
 	const index = typeof spec === "number" ? spec : table.names.indexOf(spec);
 	if (index >= 0 && index < table.columns.length) return table.columns[index];
 	const available = table.names.length > 0 ? table.names.join(", ") : `${table.columns.length} unnamed column(s)`;
@@ -215,7 +218,13 @@ function columnOf(ref: CsvRef, table: CsvTable, spec: string | number, role: str
 /** A CSV argument expands to [x, y] for one series, or to a single column when `column` is given. */
 function csvArgs(ref: CsvRef, options: DataRefOptions): unknown[] {
 	const table = readCsv(ref, options);
-	if (ref.column !== undefined) return [columnOf(ref, table, ref.column, "$csv column")];
+	if (ref.column !== undefined) {
+		// column and x/y are two ways to name the same thing; silently preferring one hides a typo.
+		if (ref.x !== undefined || ref.y !== undefined) {
+			throw new MplSpecError(`{$csv} takes column or x/y, not both; drop ${ref.x !== undefined ? "x" : "y"} or the column`);
+		}
+		return [columnOf(ref, table, ref.column, "$csv column")];
+	}
 	const y = ref.y === undefined ? undefined : [ref.y].flat();
 	if (y !== undefined && y.length > 1) {
 		throw new MplSpecError(

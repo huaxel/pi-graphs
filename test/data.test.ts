@@ -58,6 +58,14 @@ test("the parse cache evicts old tables instead of growing without bound", () =>
 	assert.equal(readCsv({ $csv: paths.at(-1) as string }), last, "the newest table is still cached");
 });
 
+test("a column spec must name one column, whole and unambiguous", () => {
+	const path = write("columns.csv", "x,y\n1,10\n2,20\n");
+	assert.throws(() => expandDataRefs({ calls: [["plot", [{ $csv: path, column: 1.5 }]]] }), /whole column index/);
+	assert.throws(() => expandDataRefs({ calls: [["plot", [{ $csv: path, column: "x", y: "y" }]]] }), /column or x\/y, not both/);
+	assert.throws(() => expandDataRefs({ calls: [["plot", [{ $csv: path, column: "x", x: "x" }]]] }), /column or x\/y, not both/);
+	assert.deepEqual(expandDataRefs({ calls: [["plot", [{ $csv: path, column: 1 }]]] }).calls[0]?.[1], [[10, 20]]);
+});
+
 test("readCsv detects semicolon files and reads headerless data", () => {
 	const table = readCsv({ $csv: semi });
 	assert.deepEqual(table.names, ["bucket", "count"]);

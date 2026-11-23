@@ -47,6 +47,8 @@ grid painted its facecolour as a field of `█`. Committed at `d782ec8`, merged 
   a full parsed table for the life of the process.
 - `renderChart` validates `format` up front. An unsupported value used to write only the spec file and
   return no pixels; `"ansi"` now says it is the tool's terminal path.
+- A `$csv` column spec must be a whole index, and `column` cannot be combined with `x`/`y` (one used to
+  win silently). A fractional index used to resolve to `undefined` and reach mpl as a missing series.
 
 ## Dependency notes
 
