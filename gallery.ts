@@ -1,7 +1,7 @@
 /** The chart folder: listing rendered charts and pruning old day directories. No Pi imports, so tests drive it. */
 import { existsSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
 export const CHART_ROOT = process.env.PI_CHART_DIR || join(homedir(), ".pi", "agent", "work", "charts");
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -100,7 +100,10 @@ export function pruneCharts(root = CHART_ROOT, options: { days?: number; keepDay
 		} catch {
 			continue;
 		}
-		if (!dir.startsWith(`${rootPath}/`)) continue;
+		// Separator-safe containment: `${rootPath}/` never prefixes a Windows path.
+		// relative() returns an absolute path for another drive, which isAbsolute catches.
+		const inside = relative(rootPath, dir);
+		if (!inside || inside.startsWith("..") || isAbsolute(inside)) continue;
 		try {
 			files += readdirSync(dir).length;
 			rmSync(dir, { recursive: true, force: true });
