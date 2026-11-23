@@ -29,12 +29,27 @@ function resolvePath(path: string, options: DataRefOptions): string {
 function readDataFile(path: string, options: DataRefOptions): string {
 	const full = resolvePath(path, options);
 	let text: string;
-	try {
-		text = (options.readFile ?? ((p: string) => readFileSync(p, "utf8")))(full);
-	} catch (error) {
-		throw new MplSpecError(`cannot read ${full}: ${error instanceof Error ? error.message : String(error)}`);
+	if (options.readFile) {
+		try {
+			text = options.readFile(full);
+		} catch (error) {
+			throw new MplSpecError(`cannot read ${full}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	} else {
+		let size: number;
+		try {
+			size = statSync(full).size;
+		} catch (error) {
+			throw new MplSpecError(`cannot read ${full}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		if (size > MAX_DATA_BYTES) throw new MplSpecError(`${full} is larger than ${MAX_DATA_BYTES} bytes`);
+		try {
+			text = readFileSync(full, "utf8");
+		} catch (error) {
+			throw new MplSpecError(`cannot read ${full}: ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
-	if (text.length > MAX_DATA_BYTES) throw new MplSpecError(`${full} is larger than ${MAX_DATA_BYTES} bytes`);
+	if (Buffer.byteLength(text, "utf8") > MAX_DATA_BYTES) throw new MplSpecError(`${full} is larger than ${MAX_DATA_BYTES} bytes`);
 	return text;
 }
 

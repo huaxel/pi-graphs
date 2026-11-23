@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { withSavedSpec } from "../index.ts";
-import { MPL_LIMITS, MPL_PALETTES, renderChart } from "../render.ts";
+import { assertWithinBudget, MPL_LIMITS, MPL_PALETTES, renderChart } from "../render.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "pi-mpl-render-"));
 after(() => rmSync(dir, { recursive: true, force: true }));
@@ -79,4 +79,12 @@ test("withSavedSpec passes specs through untouched when from is absent", () => {
 	const spec = { name: "x", calls } as never;
 	assert.equal(withSavedSpec(spec), spec);
 	assert.throws(() => withSavedSpec({}), /calls is required/);
+});
+
+test("point budget counts dates and error-bar arrays", () => {
+	const n = MPL_LIMITS.points + 1;
+	const dates = { $dates: Array.from({ length: n }, () => "2026-01-01") };
+	assert.throws(() => assertWithinBudget([["plot", [dates, [1]]]]), /data points exceeds/);
+	const yerr = Array.from({ length: n }, () => 1);
+	assert.throws(() => assertWithinBudget([["plot", [[1, 2]], { yerr }]]), /data points exceeds/);
 });
