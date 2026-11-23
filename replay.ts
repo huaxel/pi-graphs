@@ -143,12 +143,17 @@ export const MPL_LIMITS = { calls: 250, points: 400_000 } as const;
 function countPoints(calls: readonly unknown[]): number {
 	let total = 0;
 	const walk = (value: unknown): void => {
-		if (Array.isArray(value)) {
+		if (Array.isArray(value) || value instanceof Float64Array || value instanceof Uint32Array) {
 			total += value.length;
-			for (const item of value) if (Array.isArray(item)) walk(item);
-		} else if (value instanceof Float64Array || value instanceof Uint32Array) total += value.length;
+			if (Array.isArray(value)) for (const item of value) walk(item);
+		} else if (value !== null && typeof value === "object") {
+			for (const item of Object.values(value)) walk(item);
+		}
 	};
-	for (const call of calls) if (Array.isArray(call)) walk(call[1]);
+	for (const call of calls) if (Array.isArray(call)) {
+		walk(call[1]);
+		walk(call[2]);
+	}
 	return total;
 }
 

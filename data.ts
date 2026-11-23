@@ -1,5 +1,5 @@
 /** Data references in a chart spec: {$csv} and {$json}, resolved before the figure is built. */
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { MplSpecError } from "./replay.ts";
@@ -29,12 +29,27 @@ function resolvePath(path: string, options: DataRefOptions): string {
 function readDataFile(path: string, options: DataRefOptions): string {
 	const full = resolvePath(path, options);
 	let text: string;
-	try {
-		text = (options.readFile ?? ((p: string) => readFileSync(p, "utf8")))(full);
-	} catch (error) {
-		throw new MplSpecError(`cannot read ${full}: ${error instanceof Error ? error.message : String(error)}`);
+	if (options.readFile) {
+		try {
+			text = options.readFile(full);
+		} catch (error) {
+			throw new MplSpecError(`cannot read ${full}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	} else {
+		let size: number;
+		try {
+			size = statSync(full).size;
+		} catch (error) {
+			throw new MplSpecError(`cannot read ${full}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		if (size > MAX_DATA_BYTES) throw new MplSpecError(`${full} is larger than ${MAX_DATA_BYTES} bytes`);
+		try {
+			text = readFileSync(full, "utf8");
+		} catch (error) {
+			throw new MplSpecError(`cannot read ${full}: ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
-	if (text.length > MAX_DATA_BYTES) throw new MplSpecError(`${full} is larger than ${MAX_DATA_BYTES} bytes`);
+	if (Buffer.byteLength(text, "utf8") > MAX_DATA_BYTES) throw new MplSpecError(`${full} is larger than ${MAX_DATA_BYTES} bytes`);
 	return text;
 }
 
@@ -144,9 +159,18 @@ export interface CsvTable {
 
 /** Parses a CSV once: header names (empty when header: false) and coerced column arrays. */
 export function readCsv(ref: CsvRef, options: DataRefOptions = {}): CsvTable {
-	const cacheKey = `${resolvePath(ref.$csv, options)}|${ref.header ?? true}|${ref.parse ?? "auto"}`;
-	const cached = tableCache.get(cacheKey);
-	if (cached) return cached;
+	const fullPath = resolvePath(ref.$csv, options);
+	let cacheKey: string | undefined;
+	if (!options.readFile) {
+		try {
+			const stat = statSync(fullPath);
+			cacheKey = `${fullPath}|${stat.mtimeMs}|${stat.size}|${ref.header ?? true}|${ref.parse ?? "auto"}`;
+			const cached = tableCache.get(cacheKey);
+			if (cached) return cached;
+		} catch {
+			// Stat failed: readDataFile throws "cannot read <path>".
+		}
+	}
 	const text = readDataFile(ref.$csv, options).replace(/^\uFEFF/, "");
 	const newline = text.search(/\r?\n/);
 	const rows = parseDelimited(text, detectDelimiter(newline === -1 ? text : text.slice(0, newline)));
@@ -161,7 +185,7 @@ export function readCsv(ref: CsvRef, options: DataRefOptions = {}): CsvTable {
 		return coerce(raw, ref.parse && ref.parse !== "auto" ? ref.parse : inferKind(raw));
 	});
 	const table = { names, columns };
-	tableCache.set(cacheKey, table);
+	if (cacheKey) tableCache.set(cacheKey, table);
 	return table;
 }
 
