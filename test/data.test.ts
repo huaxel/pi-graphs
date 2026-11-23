@@ -120,3 +120,29 @@ test("readCsv rejects malformed quoted fields rather than silently changing data
 	assert.throws(() => readCsv({ $csv: "bad.csv" }, { readFile: () => 'a,b\n"unfinished,2\n' }), /unterminated quoted field/);
 	assert.throws(() => readCsv({ $csv: "bad.csv" }, { readFile: () => 'a,b\n"closed"oops,2\n' }), /unexpected character after closing quote/);
 });
+
+test("readCsv reparses when the file changes", () => {
+	const path = write("fresh.csv", "x,y\n1,10\n");
+	const first = readCsv({ $csv: path });
+	assert.deepEqual(first.columns[1], [10]);
+	writeFileSync(path, "x,y\n1,999\n");
+	const second = readCsv({ $csv: path });
+	assert.notEqual(second, first);
+	assert.deepEqual(second.columns[1], [999]);
+});
+
+test("an injected readFile is not reused for a later call", () => {
+	const first = readCsv({ $csv: "mem.csv" }, { readFile: () => "n\n1\n" });
+	const second = readCsv({ $csv: "mem.csv" }, { readFile: () => "n\n2\n" });
+	assert.deepEqual(first.columns[0], [1]);
+	assert.deepEqual(second.columns[0], [2]);
+});
+
+test("renderChart picks up a rewritten csv instead of reusing the png", () => {
+	const path = write("live.csv", "x,y\n1,10\n2,20\n");
+	const calls = [["plot", [{ $csv: path, x: "x", y: "y" }]]] as never;
+	const first = renderChart({ name: "live", calls }, dir);
+	writeFileSync(path, "x,y\n1,1000\n2,2000\n");
+	const second = renderChart({ name: "live", calls }, dir);
+	assert.notEqual(first.pngPath, second.pngPath);
+});
