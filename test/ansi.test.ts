@@ -30,6 +30,20 @@ test("a line chart renders braille marks with a framed plot area and real labels
 	for (const line of chart.plain) assert.equal([...line].length, chart.cols, "every row is the full width");
 });
 
+test("a line chart paints braille in the series colour", () => {
+	const chart = lines([["plot", [[1, 2, 3, 4], [10, 30, 20, 40]]]]);
+	const hit = chart.lines
+		.join("\n")
+		.split(/\x1b\[0m/)
+		.some((part) => /38;2;214;166;255m/.test(part) && /[⠀-⣿]/.test(part));
+	assert.ok(hit, "series colour on a braille glyph");
+});
+
+test("scatter markers keep the series colour", () => {
+	const colored = lines([["scatter", [[1, 2, 3, 4], [10, 30, 20, 40]]]]).lines.join("\n");
+	assert.match(colored, /38;2;214;166;255/, "scatter uses the cycle colour");
+});
+
 test("bars fill with a background colour and still read as blocks without colour", () => {
 	const chart = lines([["bar", [["auth", "api", "worker"], [14, 38, 27]]], ["set_title", ["Share"]]]);
 	const colored = chart.lines.join("\n");

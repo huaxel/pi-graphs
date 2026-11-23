@@ -183,12 +183,13 @@ export function sceneToCells(
 				continue;
 			}
 			if (node.kind === "image") continue; // rasters stay for the PNG
-			// Path inks nest the colour as ink.stroke.color.hex; fills use ink.fill.hex.
+			// Polyline colour is stroke.color.hex; path inks nest the colour as ink.stroke.color.hex; fills use ink.fill.hex.
 			const ink = node.ink as { stroke?: { color?: Rgb; width?: number }; fill?: Rgb } | undefined;
-			const paint = (node.stroke as Rgb | undefined)?.hex ?? ink?.stroke?.color?.hex ?? ink?.fill?.hex ?? "#ffffff";
+			const stroke = node.stroke as { hex?: string; color?: Rgb; width?: number } | undefined;
+			const paint = stroke?.color?.hex ?? stroke?.hex ?? ink?.stroke?.color?.hex ?? ink?.fill?.hex ?? "#ffffff";
 			const hex = paint.slice(0, 7).toLowerCase();
 			// Hairlines are rules (grid, spines, ticks) whatever the theme; series strokes are heavier.
-			const strokeWidth = (node.stroke as { width?: number } | undefined)?.width ?? ink?.stroke?.width ?? 0;
+			const strokeWidth = stroke?.width ?? ink?.stroke?.width ?? 0;
 			const thin = strokeWidth > 0 && strokeWidth < 1.5;
 			if (node.kind === "text") {
 				texts.push({
