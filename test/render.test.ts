@@ -88,3 +88,8 @@ test("point budget counts dates and error-bar arrays", () => {
 	const yerr = Array.from({ length: n }, () => 1);
 	assert.throws(() => assertWithinBudget([["plot", [[1, 2]], { yerr }]]), /data points exceeds/);
 });
+
+test("an unsupported format is refused instead of writing only a spec", () => {
+	assert.throws(() => renderChart({ format: "jpeg" as never, calls }, dir), /unknown format "jpeg"/);
+	assert.throws(() => renderChart({ format: "ansi", calls }, dir), /terminal rows/);
+});

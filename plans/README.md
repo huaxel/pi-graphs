@@ -43,6 +43,10 @@ grid painted its facecolour as a field of `█`. Committed at `d782ec8`, merged 
 - The `/charts` entry renderer caches each PNG read (keyed by path, mtime, size), so scrolling a
   session with several charts no longer base64-encodes the same file on every paint.
 - `LICENSE` exists (MIT, 2026 Juan Benjumea), matching `package.json`.
+- The CSV parse cache is an LRU of 8 tables. It was unbounded, so every edited or newly read CSV kept
+  a full parsed table for the life of the process.
+- `renderChart` validates `format` up front. An unsupported value used to write only the spec file and
+  return no pixels; `"ansi"` now says it is the tool's terminal path.
 
 ## Dependency notes
 

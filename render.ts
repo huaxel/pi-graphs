@@ -170,12 +170,19 @@ export function resolveRc(
 }
 
 export function renderChart(input: MplRenderInput, outDir = defaultChartDir(), dataOptions: DataRefOptions = {}, injectedRc: Readonly<Record<string, unknown>> = {}): MplRenderOutput {
+	const format = input.format ?? "png";
+	if (format !== "png" && format !== "svg" && format !== "both" && format !== "html") {
+		throw new Error(
+			format === "ansi"
+				? 'format "ansi" is returned as terminal rows by the tool, not written by renderChart'
+				: `unknown format "${format}"; use png, svg, both, or html`,
+		);
+	}
 	const spec = expandDataRefs(input, dataOptions);
 	assertWithinBudget(spec.calls);
 	const theme = spec.theme ?? MPL_DEFAULT_THEME;
 	const scale = spec.scale ?? MPL_DEFAULT_SCALE;
 	if (!(scale >= 0.25 && scale <= 4)) throw new Error(`scale must be between 0.25 and 4, got ${scale}`);
-	const format = spec.format ?? "png";
 	const rc = resolveRc(input, injectedRc);
 	const stem = `${slugOf(spec.name)}-${specDigest({ ...spec, rc }, theme, scale, format)}`;
 	mkdirSync(outDir, { recursive: true });

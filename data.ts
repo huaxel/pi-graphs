@@ -150,7 +150,23 @@ interface CsvRef extends Json {
 const isCsvRef = (v: unknown): v is CsvRef => isObject(v) && typeof v.$csv === "string";
 const isJsonRef = (v: unknown): v is Json & { $json: string } => isObject(v) && typeof v.$json === "string";
 
+/** Parsed tables are large, so the cache stays small: a long session does not keep every file it read. */
+const TABLE_CACHE_LIMIT = 8;
 const tableCache = new Map<string, CsvTable>();
+
+function cachedTable(key: string): CsvTable | undefined {
+	const hit = tableCache.get(key);
+	if (hit === undefined) return undefined;
+	// Map iterates in insertion order; re-inserting makes this entry the most recent.
+	tableCache.delete(key);
+	tableCache.set(key, hit);
+	return hit;
+}
+
+function cacheTable(key: string, table: CsvTable): void {
+	tableCache.set(key, table);
+	while (tableCache.size > TABLE_CACHE_LIMIT) tableCache.delete(tableCache.keys().next().value as string);
+}
 
 export interface CsvTable {
 	readonly names: readonly string[];
@@ -165,7 +181,7 @@ export function readCsv(ref: CsvRef, options: DataRefOptions = {}): CsvTable {
 		try {
 			const stat = statSync(fullPath);
 			cacheKey = `${fullPath}|${stat.mtimeMs}|${stat.size}|${ref.header ?? true}|${ref.parse ?? "auto"}`;
-			const cached = tableCache.get(cacheKey);
+			const cached = cachedTable(cacheKey);
 			if (cached) return cached;
 		} catch {
 			// Stat failed: readDataFile throws "cannot read <path>".
@@ -185,7 +201,7 @@ export function readCsv(ref: CsvRef, options: DataRefOptions = {}): CsvTable {
 		return coerce(raw, ref.parse && ref.parse !== "auto" ? ref.parse : inferKind(raw));
 	});
 	const table = { names, columns };
-	if (cacheKey) tableCache.set(cacheKey, table);
+	if (cacheKey) cacheTable(cacheKey, table);
 	return table;
 }
 
