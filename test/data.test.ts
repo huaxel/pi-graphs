@@ -48,6 +48,16 @@ test("readCsv handles files with more rows than a spread can carry, and caches t
 	assert.equal(readCsv({ $csv: big }), table, "the parsed table is reused");
 });
 
+test("the parse cache evicts old tables instead of growing without bound", () => {
+	const paths = Array.from({ length: 10 }, (_, i) => write(`cap-${i}.csv`, `n\n${i}\n`));
+	const first = readCsv({ $csv: paths[0] as string });
+	for (const path of paths.slice(1)) readCsv({ $csv: path });
+	assert.deepEqual(first.columns[0], [0], "the first table still parsed");
+	assert.notEqual(readCsv({ $csv: paths[0] as string }), first, "it was evicted, so it re-parses");
+	const last = readCsv({ $csv: paths.at(-1) as string });
+	assert.equal(readCsv({ $csv: paths.at(-1) as string }), last, "the newest table is still cached");
+});
+
 test("readCsv detects semicolon files and reads headerless data", () => {
 	const table = readCsv({ $csv: semi });
 	assert.deepEqual(table.names, ["bucket", "count"]);
