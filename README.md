@@ -188,4 +188,4 @@ Layout:
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See `LICENSE`. Release notes are in `CHANGELOG.md`.
