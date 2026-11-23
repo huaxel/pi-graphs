@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 import { discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
 import { parseColor } from "@earendil-works/pi-tui";
@@ -14,7 +15,7 @@ import { parseColor } from "@earendil-works/pi-tui";
 const root = mkdtempSync(join(tmpdir(), "pi-mpl-load-"));
 const agentDir = mkdtempSync(join(tmpdir(), "pi-mpl-agent-"));
 process.env.PI_CHART_DIR = root;
-const repoRoot = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+const repoRoot = fileURLToPath(new URL("..", import.meta.url)).replace(/[\/]$/, "");
 const entry = join(repoRoot, "index.ts");
 after(() => {
 	rmSync(root, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -9,19 +9,28 @@ const root = mkdtempSync(join(tmpdir(), "pi-charts-gallery-"));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 const day = (offset: number): string => new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10);
+// Ordering is asserted below, so pin mtimes instead of trusting the wall clock: two writes can land in
+// the same timestamp tick (or have their mtime stamped out of order by deferred write-back), which made
+// "newest first" flip between runs. Later fixtures are newer, one second apart and all in the past.
+const NOW = Date.now();
+let stamp = 0;
 const touch = (dayName: string, name: string, text = "x"): string => {
 	const dir = join(root, dayName);
 	mkdirSync(dir, { recursive: true });
 	const path = join(dir, name);
 	writeFileSync(path, text);
+	const when = new Date(NOW - 60_000 + stamp++ * 1_000);
+	utimesSync(path, when, when);
 	return path;
 };
 
+// Oldest day first: listCharts orders by mtime, and a real chart's mtime is
+// its render time, so the newest day folder must also hold the newest files.
+touch(day(30), "ancient-cccc.png");
+touch(day(2), "bars-bbbb.png");
 touch(day(0), "latency-aaaa.png");
 touch(day(0), "latency-aaaa.json", "{}");
 touch(day(0), "latency-aaaa.html", "<html></html>");
-touch(day(2), "bars-bbbb.png");
-touch(day(30), "ancient-cccc.png");
 touch("not-a-day", "ignore.png");
 
 test("listCharts groups stems, newest first, and honours the window", () => {
