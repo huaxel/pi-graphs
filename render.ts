@@ -152,21 +152,32 @@ ${script ? `<script type="module">\n${script}</script>` : ""}
 `;
 }
 
-export function renderChart(input: MplRenderInput, outDir = defaultChartDir(), dataOptions: DataRefOptions = {}): MplRenderOutput {
+/** Precedence, last wins: injected Pi rc (only when theme is omitted), then palette axes.prop_cycle, then caller rc. */
+export function resolveRc(
+	input: Pick<MplRenderInput, "theme" | "rc" | "palette">,
+	injectedRc: Readonly<Record<string, unknown>> = {},
+): Record<string, unknown> {
+	const paletteCycle = input.palette && input.palette !== "theme" ? MPL_PALETTES[input.palette] : undefined;
+	if (input.palette && input.palette !== "theme" && !paletteCycle) {
+		throw new Error(`unknown palette "${input.palette}"; use ${["theme", ...Object.keys(MPL_PALETTES)].join(", ")}`);
+	}
+	const themeRc = input.theme === undefined ? injectedRc : {};
+	return {
+		...themeRc,
+		...(paletteCycle ? { "axes.prop_cycle": [...paletteCycle] } : {}),
+		...input.rc,
+	};
+}
+
+export function renderChart(input: MplRenderInput, outDir = defaultChartDir(), dataOptions: DataRefOptions = {}, injectedRc: Readonly<Record<string, unknown>> = {}): MplRenderOutput {
 	const spec = expandDataRefs(input, dataOptions);
 	assertWithinBudget(spec.calls);
 	const theme = spec.theme ?? MPL_DEFAULT_THEME;
 	const scale = spec.scale ?? MPL_DEFAULT_SCALE;
 	if (!(scale >= 0.25 && scale <= 4)) throw new Error(`scale must be between 0.25 and 4, got ${scale}`);
 	const format = spec.format ?? "png";
-	const paletteCycle = spec.palette && spec.palette !== "theme" ? MPL_PALETTES[spec.palette] : undefined;
-	if (spec.palette && spec.palette !== "theme" && !paletteCycle) {
-		throw new Error(`unknown palette "${spec.palette}"; use ${["theme", ...Object.keys(MPL_PALETTES)].join(", ")}`);
-	}
-	// Explicit rc wins over the palette cycle, which wins over the theme's own cycle.
-	const rc = paletteCycle ? { "axes.prop_cycle": paletteCycle, ...spec.rc } : spec.rc;
-
-	const stem = `${slugOf(spec.name)}-${specDigest(spec, theme, scale, format)}`;
+	const rc = resolveRc(input, injectedRc);
+	const stem = `${slugOf(spec.name)}-${specDigest({ ...spec, rc }, theme, scale, format)}`;
 	mkdirSync(outDir, { recursive: true });
 	const wantsPng = format === "png" || format === "both";
 	const wantsSvg = format === "svg" || format === "both";

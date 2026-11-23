@@ -6,7 +6,7 @@ import { after, test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { parseColor } from "@earendil-works/pi-tui";
 import { toMplRenderToolDefinition } from "../index.ts";
-import { MPL_THEMES, renderChart } from "../render.ts";
+import { MPL_PALETTES, MPL_THEMES, renderChart } from "../render.ts";
 import { decodeValue, MPL_AXES_METHODS } from "../replay.ts";
 
 const outDir = mkdtempSync(join(tmpdir(), "pi-mpl-test-"));
@@ -165,6 +165,88 @@ test("the tool applies Pi UI Theme Color objects and honors explicit theme overr
 	const explicitSc = explicit.structuredContent as { svgPath?: string };
 	assert.ok(explicitSc.svgPath && !readFileSync(explicitSc.svgPath, "utf8").includes("#11131a"));
 	assert.ok(explicitSc.svgPath && /facecolor|fill="#f/i.test(readFileSync(explicitSc.svgPath, "utf8")));
+});
+
+test("palette and caller rc beat the Pi theme, and the saved spec stays the caller's", async () => {
+	const tool = toMplRenderToolDefinition(() => outDir);
+	const mockCtx = {
+		ui: {
+			theme: {
+				colors: {
+					text: parseColor("#e6edf3"),
+					muted: parseColor("#8b949e"),
+					borderMuted: parseColor("#30363d"),
+					accent: parseColor("#58a6ff"),
+					success: parseColor("#3fb950"),
+					warning: parseColor("#d29922"),
+					error: parseColor("#f85149"),
+					mdLink: parseColor("#a371f7"),
+					syntaxFunction: parseColor("#79c0ff"),
+					syntaxNumber: parseColor("#ffa657"),
+					syntaxKeyword: parseColor("#ff7b72"),
+				},
+			},
+		},
+	};
+	const calls = [["plot", [[1, 2, 3], [3, 1, 2]], { label: "s" }], ["set_title", ["T"]]];
+
+	const pal = await tool.execute(
+		"id",
+		{ name: "pal-rc", format: "svg", palette: "okabe-ito", calls } as never,
+		undefined,
+		undefined,
+		mockCtx as never,
+	);
+	assert.notEqual(pal.isError, true);
+	const palSc = pal.structuredContent as { svgPath?: string; specPath?: string };
+	const palSvg = readFileSync(palSc.svgPath ?? "", "utf8");
+	assert.ok(palSvg.toLowerCase().includes(MPL_PALETTES["okabe-ito"][0]!.toLowerCase()));
+	assert.ok(!palSvg.toLowerCase().includes("#58a6ff"));
+	const spec = JSON.parse(readFileSync(palSc.specPath ?? "", "utf8")) as { rc?: unknown };
+	assert.equal(spec.rc, undefined);
+
+	const custom = await tool.execute(
+		"id",
+		{
+			name: "custom-rc",
+			format: "svg",
+			palette: "okabe-ito",
+			rc: { "axes.prop_cycle": ["#ff00aa"] },
+			calls,
+		} as never,
+		undefined,
+		undefined,
+		mockCtx as never,
+	);
+	assert.notEqual(custom.isError, true);
+	const customSc = custom.structuredContent as { svgPath?: string; specPath?: string };
+	assert.ok(readFileSync(customSc.svgPath ?? "", "utf8").toLowerCase().includes("#ff00aa"));
+	const saved = JSON.parse(readFileSync(customSc.specPath ?? "", "utf8")) as {
+		rc?: { "axes.prop_cycle"?: string[]; "figure.facecolor"?: unknown };
+	};
+	assert.equal(saved.rc?.["axes.prop_cycle"]?.[0], "#ff00aa");
+	assert.equal(saved.rc?.["figure.facecolor"], undefined);
+
+	const again = await tool.execute(
+		"id",
+		{ from: palSc.specPath, theme: "pro-slate", name: "restyle-rc", format: "svg" } as never,
+		undefined,
+		undefined,
+		mockCtx as never,
+	);
+	assert.notEqual(again.isError, true);
+	const againSc = again.structuredContent as { svgPath?: string };
+	assert.ok(!readFileSync(againSc.svgPath ?? "", "utf8").toLowerCase().includes("#58a6ff"));
+
+	const ansi = await tool.execute(
+		"id",
+		{ format: "ansi", cols: 60, rc: { "axes.titlecolor": "#ff00aa" }, calls } as never,
+		undefined,
+		undefined,
+		mockCtx as never,
+	);
+	assert.notEqual(ansi.isError, true);
+	assert.ok((ansi.content[0] as { text: string }).text.includes("255;0;170"));
 });
 
 test("rapid renders with the same name do not overwrite each other", () => {

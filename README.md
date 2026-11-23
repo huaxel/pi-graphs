@@ -89,8 +89,8 @@ Long series do not need to be pasted into the call:
 - `{$csv, x, y}` expands to one positional argument list of `[x, y]`; one series per call, as in
   matplotlib.
 - `{$csv, column}` is a single column, for `hist` or a kwarg such as `yerr`.
-- Column selection is by header name or index. Without `x` or `y`, the first column is x and the
-  next two are y candidates.
+- Column selection is by header name or index. Without `x` or `y`, a one-column file is that
+  column, and a wider file is the first column against the second. Further columns are not plotted.
 - `header: false` reads headerless files, `parse: "number" | "date" | "string"` forces a type, and
   otherwise each column is inferred: numbers, ISO dates, else strings. Empty cells become `NaN` gaps.
 - Comma, semicolon, tab, and pipe delimiters are detected; quoted fields may contain delimiters,
