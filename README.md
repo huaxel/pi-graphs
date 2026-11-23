@@ -121,7 +121,9 @@ spec from blocking the session.
 
 `format: "ansi"` skips files and returns the chart as terminal rows: braille marks (2x4 dots per
 cell), box-drawing rules, and the labels as real text. Bars fill with a background colour, so they
-read as solid blocks, and `cols` sets the width (default 78).
+read as solid blocks, and `cols` sets the width (default 78). The x axis label gets its own row under
+the ticks, rotated y labels read bottom to top in their own column, and grid panels stay transparent
+on the terminal background.
 
 It exists because Pi cannot show images under tmux, screen, Alacritty, VS Code, Zed, Windows
 Terminal, or JetBrains terminals, and because a text chart can be pasted into an issue or a commit

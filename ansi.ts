@@ -52,7 +52,7 @@ export function sceneToCells(
 	options: { cols: number },
 ): { cells: Cell[][]; cols: number; rows: number; rowPx: number; colPx: number } {
 	const cols = options.cols;
-	const rows = Math.max(8, Math.round((cols * scene.height) / scene.width / 2));
+	const rows = Math.max(8, Math.ceil((cols * scene.height) / scene.width / 2) + 1);
 	const colPx = scene.width / cols;
 	const rowPx = scene.height / rows;
 	const dotW = colPx / 2;
@@ -108,23 +108,9 @@ export function sceneToCells(
 		}
 	};
 
-	// The Axes box, found before the walk: it separates spines from grid rules and clamps labels.
+	// The Axes box: it separates spines from grid rules and clamps labels. Every artist sits inside a
+	// group, so a rect at the top level is an Axes patch whatever its size in a grid.
 	let box = { x0: 0, y0: 0, x1: scene.width, y1: scene.height };
-	const findBox = (nodes: readonly unknown[]): void => {
-		for (const raw of nodes) {
-			const node = raw as Record<string, unknown> & { kind: string };
-			if (node.kind === "group" || node.kind === "collection") {
-				findBox((node.nodes as readonly unknown[]) ?? []);
-				continue;
-			}
-			if (node.kind !== "rect") continue;
-			const area = Number(node.w) * Number(node.h);
-			if (area > (box.x1 - box.x0) * (box.y1 - box.y0) * 0.3) continue;
-			if (area > (box.x1 - box.x0) * (box.y1 - box.y0) * 0.25 || box.x1 === scene.width) {
-				box = { x0: Number(node.x), y0: Number(node.y), x1: Number(node.x) + Number(node.w), y1: Number(node.y) + Number(node.h) };
-			}
-		}
-	};
 
 	const flatten = (segs: readonly unknown[]): [number, number][][] => {
 		const out: [number, number][][] = [];
@@ -175,11 +161,11 @@ export function sceneToCells(
 
 	const texts: { text: string; x: number; y: number; sizePx: number; rotation: unknown; hex: string }[] = [];
 
-	const walk = (nodes: readonly unknown[]): void => {
+	const walk = (nodes: readonly unknown[], depth = 0): void => {
 		for (const raw of nodes) {
 			const node = raw as Record<string, unknown> & { kind: string };
 			if (node.kind === "group" || node.kind === "collection") {
-				walk((node.nodes as readonly unknown[]) ?? []);
+				walk((node.nodes as readonly unknown[]) ?? [], depth + 1);
 				continue;
 			}
 			if (node.kind === "image") continue; // rasters stay for the PNG
@@ -203,9 +189,9 @@ export function sceneToCells(
 				continue;
 			}
 			if (node.kind === "rect") {
-				const ink = node.ink as { kind: string; fill?: Rgb } | undefined;
 				const r = { x: Number(node.x), y: Number(node.y), w: Number(node.w), h: Number(node.h) };
-				if (r.w * r.h > scene.width * scene.height * 0.3) {
+				if (depth === 0) {
+					// The Axes surface itself: the terminal's own background shows through, as with the PNG path.
 					box = { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h };
 					continue;
 				}
@@ -293,7 +279,6 @@ export function sceneToCells(
 			}
 		}
 	};
-	findBox(scene.nodes);
 	walk(scene.nodes);
 
 	for (let row = 0; row < rows; row++) {
@@ -312,24 +297,48 @@ export function sceneToCells(
 		}
 	}
 
-	for (const text of texts) {
-		const glyphs = [...text.text];
-		if (glyphs.length === 0) continue;
-		const vertical = text.rotation === "vertical";
-		const width = vertical ? 1 : glyphs.length;
-		let col = vertical ? Math.round(text.x / colPx - 0.5) : Math.round(text.x / colPx);
-		let row = Math.round((text.y - text.sizePx * 0.45) / rowPx);
-		// A title sits above the frame: never let it land on the top spine row.
-		if (!vertical && text.y <= box.y0 + 1) row = Math.min(row, Math.round(box.y0 / rowPx - 0.5) - 1);
-		if (row < 0) row = 0;
-		// Labels anchored at their right edge would otherwise run into the plot; keep them outside the box.
-		const startCol = Math.round(box.x0 / colPx);
-		if (!vertical && col < startCol && col + width > startCol) col = startCol - width;
-		glyphs.forEach((glyph, i) => {
-			if (vertical) setCell(row + i, col, { glyph, hex: text.hex, prio: 4 });
-			else setCell(row, col + i, { glyph, hex: text.hex, prio: 4 });
-		});
-	}
+	// Larger text wins a crowded row, so an axis label survives where a tick label would splice it.
+	const horizontal = texts.filter((t) => t.rotation !== "vertical").sort((a, b) => b.sizePx - a.sizePx);
+	const placeHorizontal = (): number => {
+		const taken = new Map<number, [number, number][]>();
+		let leftmost = cols;
+		for (const text of horizontal) {
+			const glyphs = [...text.text];
+			if (glyphs.length === 0) continue;
+			const width = glyphs.length;
+			let col = Math.round(text.x / colPx);
+			let row = Math.floor((text.y - text.sizePx * 0.45) / rowPx);
+			// A title sits above the frame: never let it land on the top spine row.
+			if (text.y <= box.y0 + 1) row = Math.min(row, Math.round(box.y0 / rowPx - 0.5) - 1);
+			row = Math.max(0, Math.min(rows - 1, row));
+			// Labels anchored at their right edge would otherwise run into the plot; keep them outside the box.
+			const startCol = Math.round(box.x0 / colPx);
+			if (col < startCol && col + width > startCol) col = startCol - width;
+			col = Math.max(0, Math.min(cols - width, col));
+			// A grid this coarse cannot hold every tick: drop the ones that would overwrite a neighbour.
+			const rowSpans = taken.get(row) ?? [];
+			if (rowSpans.some(([from, to]) => col <= to && from <= col + width - 1)) continue;
+			rowSpans.push([col, col + width - 1]);
+			taken.set(row, rowSpans);
+			leftmost = Math.min(leftmost, col);
+			glyphs.forEach((glyph, i) => setCell(row, col + i, { glyph, hex: text.hex, prio: 4 }));
+		}
+		return leftmost;
+	};
+	const placeVertical = (leftmost: number): void => {
+		for (const text of texts) {
+			if (text.rotation !== "vertical") continue;
+			const glyphs = [...text.text];
+			if (glyphs.length === 0) continue;
+			// Keep a blank column between the rotated label and the tick labels when the grid leaves one.
+			const col = Math.max(0, Math.min(leftmost - 2, Math.round(text.x / colPx - 0.5)));
+			const anchor = Math.floor((text.y - text.sizePx * 0.45) / rowPx);
+			// Rotated text reads bottom to top: glyph 0 sits at the anchor, the rest stack upward.
+			const start = Math.max(glyphs.length - 1, Math.min(rows - 1, anchor));
+			glyphs.forEach((glyph, i) => setCell(start - i, col, { glyph, hex: text.hex, prio: 4 }));
+		}
+	};
+	placeVertical(placeHorizontal());
 
 	return { cells, cols, rows, rowPx, colPx };
 }
