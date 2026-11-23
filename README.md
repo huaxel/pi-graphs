@@ -188,4 +188,4 @@ Layout:
 
 ## License
 
-MIT.
+MIT. See `LICENSE`.

@@ -4,7 +4,7 @@
  * that unit tests over renderChart cannot see.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -95,4 +95,32 @@ test("a bad spec surfaces as a tool error, not a crash", async () => {
 	assert.equal(result.isError, true);
 	const structured = result.structuredContent as { error?: string };
 	assert.match(structured.error ?? "", /unknown call/);
+});
+
+test("/charts prune confirms the day folders it will delete", async () => {
+	const command = (await load()).extensions[0]?.commands.get("charts");
+	assert.ok(command, "/charts is registered");
+	const oldDay = new Date(Date.now() - 40 * 86_400_000).toISOString().slice(0, 10);
+	const dir = join(root, oldDay);
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "one-aaaa.png"), "x");
+	writeFileSync(join(dir, "two-bbbb.png"), "x");
+	const notes: string[] = [];
+	let confirmMessage = "";
+	const commandCtx = {
+		mode: "tui",
+		ui: {
+			notify: (message: string) => notes.push(message),
+			confirm: async (_title: string, message: string) => {
+				confirmMessage = message;
+				return false;
+			},
+			select: async () => undefined,
+		},
+	};
+	await command.handler("prune 14", commandCtx as never);
+	assert.match(confirmMessage, /1 day folder/, "one folder, not one per chart");
+	assert.doesNotMatch(confirmMessage, /2 day folder/);
+	assert.deepEqual(notes, [], "declining deletes nothing");
+	assert.ok(existsSync(dir), "the folder survives a declined prune");
 });

@@ -34,6 +34,14 @@ label was always dropped, rotated y labels read backwards and abutted the ticks,
 grid painted its facecolour as a field of `█`. It is implemented in the working tree and green on
 `npm run check` (56 tests); it is not committed.
 
+## Follow-ups closed after 006
+
+- `/charts prune` now previews with `staleDays()`, the same helper `pruneCharts()` iterates, so the
+  confirmation counts day folders instead of chart stems and cannot disagree with what gets deleted.
+- The `/charts` entry renderer caches each PNG read (keyed by path, mtime, size), so scrolling a
+  session with several charts no longer base64-encodes the same file on every paint.
+- `LICENSE` exists (MIT, 2026 Juan Benjumea), matching `package.json`.
+
 ## Dependency notes
 
 - 001, 002, and 003 touch different files and can run in any order.

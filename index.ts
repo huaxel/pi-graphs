@@ -4,13 +4,13 @@
  */
 import type { ExtensionAPI, ToolDefinition, ToolNamespace } from "@earendil-works/pi-coding-agent";
 import { Box, Color, colorToHex, Image, Text } from "@earendil-works/pi-tui";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Type, type TSchema } from "typebox";
 import { MPL_DEFAULT_THEME, MPL_THEMES, renderChart, resolveRc, resolveThemeStyle, type MplRenderInput } from "./render.ts";
 import { renderAnsiChart } from "./ansi.ts";
-import { CHART_ROOT, describeChart, listCharts, pruneCharts } from "./gallery.ts";
+import { CHART_ROOT, describeChart, listCharts, pruneCharts, staleDays } from "./gallery.ts";
 import { expandDataRefs } from "./data.ts";
 import { MPL_FIGURE_METHODS } from "./replay.ts";
 
@@ -218,14 +218,34 @@ export function toMplRenderToolDefinition(outDir?: () => string): ToolDefinition
 	};
 }
 
+/** Chart PNGs are content-addressed, so a path's bytes do not change: read each file once per paint. */
+const imageCache = new Map<string, { key: string; data: string }>();
+
+function pngBase64(path: string): string | undefined {
+	let key: string;
+	try {
+		const stat = statSync(path);
+		key = `${stat.mtimeMs}:${stat.size}`;
+	} catch {
+		return undefined;
+	}
+	const cached = imageCache.get(path);
+	if (cached?.key === key) return cached.data;
+	const data = readFileSync(path).toString("base64");
+	imageCache.set(path, { key, data });
+	if (imageCache.size > 32) imageCache.delete(imageCache.keys().next().value as string);
+	return data;
+}
+
 /** `/charts` shows the rendered charts of the last week; `/charts prune [days]` deletes old day folders. */
 export function registerChartsCommand(pi: ExtensionAPI, root = CHART_ROOT): void {
 	pi.registerEntryRenderer("mpl-chart", (entry, _options, theme) => {
 		const data = entry.data as { pngPath?: string; svgPath?: string; htmlPath?: string; specPath?: string; label?: string };
 		const box = new Box(1, 1, (text: string) => theme.bg("customMessageBg", text));
 		box.addChild(new Text(theme.fg("accent", data.label ?? "chart")));
-		if (data.pngPath && existsSync(data.pngPath)) {
-			box.addChild(new Image(readFileSync(data.pngPath).toString("base64"), "image/png", { fallbackColor: (text: string) => theme.fg("dim", text) }, { filename: data.pngPath }));
+		const png = data.pngPath ? pngBase64(data.pngPath) : undefined;
+		if (png && data.pngPath) {
+			box.addChild(new Image(png, "image/png", { fallbackColor: (text: string) => theme.fg("dim", text) }, { filename: data.pngPath }));
 		}
 		const paths = [data.pngPath, data.svgPath, data.htmlPath, data.specPath].filter(Boolean).join("\n");
 		if (paths) box.addChild(new Text(theme.fg("dim", paths)));
@@ -242,13 +262,12 @@ export function registerChartsCommand(pi: ExtensionAPI, root = CHART_ROOT): void
 					ctx.ui.notify("usage: /charts prune [days]", "error");
 					return;
 				}
-				const preview = listCharts(root, { days: 3650 });
-				const old = preview.filter((e) => e.day < new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10));
-				if (old.length === 0) {
+				const stale = staleDays(root, { days });
+				if (stale.length === 0) {
 					ctx.ui.notify(`No chart folders older than ${days} days`, "info");
 					return;
 				}
-				const ok = await ctx.ui.confirm("Prune charts?", `Delete ${old.length} chart folder(s) older than ${days} days?`);
+				const ok = await ctx.ui.confirm("Prune charts?", `Delete ${stale.length} day folder(s) older than ${days} days?`);
 				if (!ok) return;
 				const result = pruneCharts(root, { days });
 				ctx.ui.notify(`Removed ${result.files} file(s) from ${result.days.length} folder(s)`, "info");
