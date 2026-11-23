@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Type, type TSchema } from "typebox";
-import { MPL_DEFAULT_THEME, MPL_PALETTES, MPL_THEMES, renderChart, resolveThemeStyle, type MplRenderInput } from "./render.ts";
+import { MPL_DEFAULT_THEME, MPL_THEMES, renderChart, resolveRc, resolveThemeStyle, type MplRenderInput } from "./render.ts";
 import { renderAnsiChart } from "./ansi.ts";
 import { CHART_ROOT, describeChart, listCharts, pruneCharts } from "./gallery.ts";
 import { expandDataRefs } from "./data.ts";
@@ -178,25 +178,17 @@ export function toMplRenderToolDefinition(outDir?: () => string): ToolDefinition
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			try {
 				const input = withSavedSpec(params as MplRenderParams);
+				const injected = piThemeRc(ctx?.ui?.theme?.colors);
 				if (input.format === "ansi") {
-					const colors = ctx?.ui?.theme?.colors;
-					const paletteCycle = input.palette && input.palette !== "theme" ? MPL_PALETTES[input.palette] : undefined;
-					const rc = {
-						...(paletteCycle && { "axes.prop_cycle": paletteCycle }),
-						...(input.theme === undefined ? piThemeRc(colors) : (input.rc ?? {})),
-					};
-					const spec = expandDataRefs({ ...input, rc });
-					const chart = renderAnsiChart({ calls: spec.calls, rc: spec.rc ?? {}, grid: spec.grid, style: resolveThemeStyle(input.theme ?? MPL_DEFAULT_THEME) as string, cols: input.cols });
+					const spec = expandDataRefs(input);
+					const chart = renderAnsiChart({ calls: spec.calls, rc: resolveRc(input, injected), grid: spec.grid, style: resolveThemeStyle(input.theme ?? MPL_DEFAULT_THEME) as string, cols: input.cols });
 					return {
 						content: [{ type: "text" as const, text: chart.lines.join("\n") }],
 						structuredContent: { text: chart.plain.join("\n"), cols: chart.cols, rows: chart.rows } as never,
 						details: undefined,
 					};
 				}
-				const piRc = input.theme === undefined ? piThemeRc(ctx?.ui?.theme?.colors) : {};
-				const themedInput: MplRenderInput =
-					Object.keys(piRc).length > 0 ? { ...input, rc: { ...piRc, ...input.rc } } : input;
-				const out = renderChart(themedInput, outDir?.());
+				const out = renderChart(input, outDir?.(), {}, injected);
 				const image = out.png
 					? { type: "image" as const, data: Buffer.from(out.png).toString("base64"), mimeType: "image/png" as const }
 					: undefined;
