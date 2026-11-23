@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { describeChart, listCharts, pruneCharts } from "../gallery.ts";
+import { describeChart, listCharts, pruneCharts, staleDays } from "../gallery.ts";
 
 const root = mkdtempSync(join(tmpdir(), "pi-charts-gallery-"));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -53,6 +53,21 @@ test("pruneCharts removes old day folders only and keeps the current day", () =>
 	assert.ok(!afterPrune.includes("ancient-cccc"));
 	assert.ok(afterPrune.includes("latency-aaaa"));
 	assert.ok(before > afterPrune.length);
+});
+
+test("staleDays names exactly the folders pruneCharts deletes", () => {
+	// Two charts in one old folder are one folder, not two.
+	touch(day(40), "one-dddd.png");
+	touch(day(40), "two-eeee.png");
+	touch(day(50), "three-ffff.png");
+	const stale = staleDays(root, { days: 14 });
+	assert.deepEqual(stale, [day(50), day(40)]);
+	assert.ok(!stale.includes(day(0)), "the current day is kept");
+	assert.ok(!stale.includes("not-a-day"), "non-day folders are skipped");
+	assert.deepEqual(staleDays(join(root, "missing")), []);
+	const result = pruneCharts(root, { days: 14 });
+	assert.deepEqual([...result.days].sort(), [day(50), day(40)]);
+	assert.ok(!existsSync(join(root, day(40))), "the preview set is the deleted set");
 });
 
 test("pruning a missing root is a no-op", () => {

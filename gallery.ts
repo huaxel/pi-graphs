@@ -70,11 +70,21 @@ export interface PruneResult {
 	readonly files: number;
 }
 
+const isDay = (name: string): boolean => DAY.test(name);
+
+/** Day folders that `pruneCharts` would delete, so a confirmation can name the same set. */
+export function staleDays(root = CHART_ROOT, options: { days?: number; keepDay?: string } = {}): string[] {
+	if (!existsSync(root)) return [];
+	const cutoff = daysAgo(options.days ?? 14);
+	const keep = options.keepDay ?? dayString(new Date());
+	return readdirSync(root)
+		.filter((day) => isDay(day) && day < cutoff && day !== keep)
+		.sort();
+}
+
 /** Deletes day folders older than `days`, keeping the current day. Refuses paths outside the root. */
 export function pruneCharts(root = CHART_ROOT, options: { days?: number; keepDay?: string } = {}): PruneResult {
 	if (!existsSync(root)) return { days: [], files: 0 };
-	const cutoff = daysAgo(options.days ?? 14);
-	const keep = options.keepDay ?? dayString(new Date());
 	let rootPath = resolve(root);
 	try {
 		rootPath = realpathSync(rootPath);
@@ -83,8 +93,7 @@ export function pruneCharts(root = CHART_ROOT, options: { days?: number; keepDay
 	}
 	const removed: string[] = [];
 	let files = 0;
-	for (const day of readdirSync(root)) {
-		if (!DAY.test(day) || day >= cutoff || day === keep) continue;
+	for (const day of staleDays(root, options)) {
 		let dir = resolve(join(root, day));
 		try {
 			dir = realpathSync(dir);
